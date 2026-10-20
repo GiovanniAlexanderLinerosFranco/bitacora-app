@@ -13,6 +13,7 @@ const LINKS: { href: string; label: TranslationKey }[] = [
   { href: "/dashboard", label: "nav.dashboard" },
   { href: "/ledger", label: "nav.ledger" },
   { href: "/chat", label: "nav.chat" },
+  { href: "/pricing", label: "pricing.nav" },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {

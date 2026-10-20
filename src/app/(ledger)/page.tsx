@@ -27,6 +27,9 @@ export default function LandingPage() {
       <header className="flex items-center justify-between">
         <span className="text-lg font-bold text-indigo-700">{t("app.name")}</span>
         <div className="flex items-center gap-4">
+          <Link href="/pricing" className="text-sm font-medium text-slate-700 hover:text-indigo-700">
+            {t("pricing.nav")}
+          </Link>
           <LanguageSwitcher />
           <Link href="/login" className="text-sm font-medium text-slate-700 hover:text-indigo-700">
             {t("landing.ctaSignIn")}

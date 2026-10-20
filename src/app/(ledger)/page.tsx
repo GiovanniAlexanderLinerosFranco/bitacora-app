@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useTranslation } from "../../providers/i18n-provider";
+import { LanguageSwitcher } from "../../components/layout/language-switcher";
 import type { TranslationKey } from "../../lib/i18n";
 
 const FEATURES: { title: TranslationKey; body: TranslationKey; icon: string }[] = [
@@ -25,9 +26,12 @@ export default function LandingPage() {
     <main className="mx-auto flex min-h-screen max-w-5xl flex-col px-6 py-10">
       <header className="flex items-center justify-between">
         <span className="text-lg font-bold text-indigo-700">{t("app.name")}</span>
-        <Link href="/login" className="text-sm font-medium text-slate-700 hover:text-indigo-700">
-          {t("landing.ctaSignIn")}
-        </Link>
+        <div className="flex items-center gap-4">
+          <LanguageSwitcher />
+          <Link href="/login" className="text-sm font-medium text-slate-700 hover:text-indigo-700">
+            {t("landing.ctaSignIn")}
+          </Link>
+        </div>
       </header>
 
       <section className="py-20 text-center">
@@ -36,7 +40,7 @@ export default function LandingPage() {
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-600">{t("landing.heroSubtitle")}</p>
         <div className="mt-8 flex justify-center gap-3">
-          <Link href="/login" className={primary}>
+          <Link href="/register" className={primary}>
             {t("landing.ctaStart")}
           </Link>
           <Link href="/login" className={secondary}>
@@ -76,8 +80,27 @@ export default function LandingPage() {
         </ol>
       </section>
 
-      <footer className="mt-auto border-t border-slate-200 pt-6 text-center text-xs text-slate-500">
-        {t("landing.footer")}
+      <section className="rounded-2xl bg-slate-900 p-8 text-center text-white" aria-labelledby="privacy">
+        <h2 id="privacy" className="text-2xl font-bold">
+          🔒 {t("landing.privacyTitle")}
+        </h2>
+        <p className="mx-auto mt-3 max-w-2xl text-sm text-slate-300">{t("landing.privacyBody")}</p>
+        <Link href="/privacy" className="mt-4 inline-block text-sm font-medium text-indigo-300 hover:underline">
+          {t("landing.learnMore")} →
+        </Link>
+      </section>
+
+      <footer className="mt-auto space-y-2 border-t border-slate-200 pt-6 text-center text-xs text-slate-500">
+        <p>
+          <Link href="/terms" className="hover:underline">
+            {t("legal.terms")}
+          </Link>
+          {" · "}
+          <Link href="/privacy" className="hover:underline">
+            {t("legal.privacy")}
+          </Link>
+        </p>
+        <p>{t("landing.footer")}</p>
       </footer>
     </main>
   );

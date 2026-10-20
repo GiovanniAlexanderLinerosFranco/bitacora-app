@@ -1,6 +1,19 @@
 import type { RagContext } from "../../types";
 
-export const LANGUAGE_NAMES: Record<string, string> = { en: "English", es: "Spanish" };
+export const LANGUAGE_NAMES: Record<string, string> = {
+  en: "English",
+  es: "Spanish",
+  pt: "Portuguese",
+  fr: "French",
+  de: "German",
+  it: "Italian",
+  ru: "Russian",
+  zh: "Simplified Chinese",
+  ja: "Japanese",
+  ko: "Korean",
+  hi: "Hindi",
+  ar: "Arabic",
+};
 
 /** Prevents source text from closing/opening our delimiters (prompt-injection hardening). */
 export function sanitizeSourceText(text: string): string {

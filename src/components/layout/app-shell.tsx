@@ -7,6 +7,7 @@ import { useAuth } from "../../providers/auth-provider";
 import { useTranslation } from "../../providers/i18n-provider";
 import type { TranslationKey } from "../../lib/i18n";
 import { Button } from "../ui";
+import { LanguageSwitcher } from "./language-switcher";
 
 const LINKS: { href: string; label: TranslationKey }[] = [
   { href: "/dashboard", label: "nav.dashboard" },
@@ -50,6 +51,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             })}
           </nav>
           {profile?.displayName && <span className="hidden text-sm text-slate-500 md:block">{profile.displayName}</span>}
+          <LanguageSwitcher />
           <Button
             variant="ghost"
             onClick={async () => {

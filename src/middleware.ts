@@ -7,5 +7,5 @@ export async function middleware(request: NextRequest) {
 
 // Matches the landing page, the app routes and the auth routes; everything else (assets, manifest) is untouched.
 export const config = {
-  matcher: ["/", "/dashboard/:path*", "/ledger/:path*", "/chat/:path*", "/login", "/auth/:path*"],
+  matcher: ["/", "/dashboard/:path*", "/ledger/:path*", "/chat/:path*", "/login", "/register", "/recovery", "/auth/:path*"],
 };

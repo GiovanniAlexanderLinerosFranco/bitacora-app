@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { publicEnv } from "../env";
 
 export const PROTECTED_PREFIXES = ["/dashboard", "/ledger", "/chat"];
-export const AUTH_ROUTES = ["/", "/login"];
+export const AUTH_ROUTES = ["/", "/login", "/register", "/recovery"];
 
 const matches = (path: string, prefix: string) => path === prefix || path.startsWith(`${prefix}/`);
 

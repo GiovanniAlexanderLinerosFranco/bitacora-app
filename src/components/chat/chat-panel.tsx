@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { askAssistant } from "../../actions/chat";
+import { listMyTeams, listSharedSubjects, type SharedSubjectLink, type TeamSummary } from "../../actions/teams";
 import { describeError } from "../../lib/action-error";
 import { useSubjects } from "../../hooks/use-subjects";
 import { useTranslation } from "../../providers/i18n-provider";
@@ -16,12 +17,28 @@ type Message =
 export function ChatPanel() {
   const { t } = useTranslation();
   const { subjects } = useSubjects();
+  const [teams, setTeams] = useState<TeamSummary[]>([]);
+  const [shares, setShares] = useState<SharedSubjectLink[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [subjectId, setSubjectId] = useState("");
+  const [teamId, setTeamId] = useState("");
   const [pending, setPending] = useState(false);
   const nextId = useRef(1);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [teamRes, shareRes] = await Promise.all([listMyTeams(), listSharedSubjects()]);
+      if (cancelled) return;
+      setTeams(teamRes.data ?? []);
+      setShares(shareRes.data ?? []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -35,10 +52,10 @@ export function ChatPanel() {
     setMessages((m) => [...m, { id: nextId.current++, role: "user", content: question }]);
 
     // Answers are verified against the sources before display, so they arrive whole instead of token by token.
-    const res = await askAssistant({ question, subjectId: subjectId || null });
+    const res = await askAssistant({ question, subjectId: subjectId || null, teamId: teamId || null });
     setMessages((m) => [
       ...m,
-      { id: nextId.current++, role: "assistant", answer: res.error ? null : res.data, error: res.error ? describeError(res.error) : null },
+      { id: nextId.current++, role: "assistant", answer: res.error ? null : res.data, error: res.error ? describeError(res.error, t) : null },
     ]);
     setPending(false);
   }
@@ -55,23 +72,52 @@ export function ChatPanel() {
     }
   }
 
+  const teamShares = shares.filter((share) => share.teamId === teamId);
+  const personalSubjects = subjects.filter((subject) => !subject.isArchived);
+
   return (
     <div className="flex h-[calc(100vh-8.5rem)] min-h-[28rem] flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
         <div>
           <h1 className="text-lg font-semibold">{t("chat.title")}</h1>
-          <p className="text-xs text-slate-500">{t("chat.subtitle")}</p>
+          <p className="text-xs text-slate-500">{teamId ? t("chat.teamSubtitle") : t("chat.subtitle")}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <select aria-label={t("chat.subjectFilter")} value={subjectId} onChange={(e) => setSubjectId(e.target.value)} className={`${inputClass} !w-auto`}>
-            <option value="">{t("chat.allSubjects")}</option>
-            {subjects
-              .filter((s) => !s.isArchived)
-              .map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            aria-label={t("chat.context")}
+            value={teamId}
+            onChange={(e) => {
+              setTeamId(e.target.value);
+              setSubjectId("");
+              setMessages([]);
+            }}
+            className={`${inputClass} !w-auto`}
+          >
+            <option value="">{t("chat.personalContext")}</option>
+            {teams.map((team) => (
+              <option key={team.id} value={team.id}>
+                {t("chat.teamContext", { name: team.name })}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label={teamId ? t("chat.teamSubjectFilter") : t("chat.subjectFilter")}
+            value={subjectId}
+            onChange={(e) => setSubjectId(e.target.value)}
+            className={`${inputClass} !w-auto`}
+          >
+            <option value="">{teamId ? t("chat.teamAllSubjects") : t("chat.allSubjects")}</option>
+            {teamId
+              ? teamShares.map((share) => (
+                  <option key={share.id} value={share.subjectId}>
+                    {share.subjectName || personalSubjects.find((subject) => subject.id === share.subjectId)?.name || t("teams.sharedSubject")}
+                  </option>
+                ))
+              : personalSubjects.map((subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.name}
+                  </option>
+                ))}
           </select>
           {messages.length > 0 && (
             <Button variant="ghost" onClick={() => setMessages([])} disabled={pending}>
@@ -85,8 +131,8 @@ export function ChatPanel() {
         {messages.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center text-center">
             <div className="text-4xl">🎓</div>
-            <h2 className="mt-2 text-lg font-semibold">{t("chat.intro")}</h2>
-            <p className="mt-1 max-w-sm text-sm text-slate-500">{t("chat.introHint")}</p>
+            <h2 className="mt-2 text-lg font-semibold">{teamId ? t("chat.teamIntro") : t("chat.intro")}</h2>
+            <p className="mt-1 max-w-sm text-sm text-slate-500">{teamId ? t("chat.teamIntroHint") : t("chat.introHint")}</p>
           </div>
         )}
 
@@ -127,7 +173,7 @@ export function ChatPanel() {
                 <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:150ms]" />
                 <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:300ms]" />
               </span>
-              {t("chat.thinking")}
+              {teamId ? t("chat.thinkingTeam") : t("chat.thinking")}
             </div>
           </div>
         )}

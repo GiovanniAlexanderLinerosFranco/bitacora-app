@@ -2,22 +2,27 @@ import "server-only";
 import { createAdminClient } from "../lib/supabase/admin";
 import { downloadAttachmentForUser } from "../lib/supabase/storage";
 import { embedTexts } from "../lib/ai/openai";
+import { recordOwnedProductEvent } from "./product-events.service";
 import { chunkText } from "./chunking";
 import { extractText } from "./parser.service";
 
 export interface IndexResult {
-  /** Number of chunks written; null when the entry changed mid-run and a newer run owns it. */
+  /** Number of chunks written; null when another run owns the row or the optimistic write was stale. */
   chunks: number | null;
 }
 
 /**
- * Re-chunks and re-embeds an entry. Status: pending -> processing -> ready | failed.
+ * Re-chunks and re-embeds an entry. Status: pending|failed -> processing -> ready | failed.
  *
- * Concurrency: the 'processing' claim returns the row's updated_at, which acts as a version.
- * The final write (bitacora_replace_entry_embeddings RPC) is atomic and only applies if the version still matches,
- * so a stale run can never overwrite a newer one; an edit meanwhile leaves the entry 'pending' for its own run.
+ * The claim only matches pending or failed, so two workers cannot both embed the same note.
+ * A processing row is left alone until the retry job decides it was abandoned.
+ * The claim returns updated_at, which acts as a version. The final write
+ * (bitacora_replace_entry_embeddings) applies only if that version still matches,
+ * so a stale run cannot overwrite a newer one.
+ * Service role bypasses row level security; userId is the verified owner and every statement filters on it.
  */
 export async function indexLedgerEntry(userId: string, entryId: string): Promise<IndexResult> {
+  if (!userId) throw new Error("indexing requires the authenticated user id");
   const db = createAdminClient();
 
   const { data: entry, error } = await db
@@ -25,9 +30,11 @@ export async function indexLedgerEntry(userId: string, entryId: string): Promise
     .update({ embedding_status: "processing" })
     .eq("id", entryId)
     .eq("user_id", userId)
+    .in("embedding_status", ["pending", "failed"])
     .select("title, raw_text, source_file_path, source_mime_type, extracted_text, updated_at")
-    .single();
-  if (error || !entry) throw new Error("Ledger entry not found");
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!entry) return { chunks: null };
 
   try {
     // Extract once per file; the result is cached in extracted_text until the file changes.
@@ -54,6 +61,7 @@ export async function indexLedgerEntry(userId: string, entryId: string): Promise
       })),
     });
     if (rpcError) throw rpcError;
+    if (applied) await recordOwnedProductEvent(db, userId, "first_embedding_ready", { chunk_count: chunks.length });
     return { chunks: applied ? chunks.length : null };
   } catch (e) {
     // Only mark failed if nobody edited the entry meanwhile (otherwise it is already 'pending').

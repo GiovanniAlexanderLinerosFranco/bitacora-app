@@ -8,6 +8,7 @@ export interface ProfileRow {
   career_or_field: string | null;
   preferred_language: string;
   timezone: string;
+  onboarding_completed_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -19,6 +20,7 @@ export const toProfile = (r: ProfileRow): UserProfile => ({
   careerOrField: r.career_or_field,
   preferredLanguage: r.preferred_language,
   timezone: r.timezone,
+  onboardingCompletedAt: r.onboarding_completed_at ?? null,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });

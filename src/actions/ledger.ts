@@ -2,6 +2,8 @@
 
 import { fail, fromPostgrest, ok, parse, requireUser, type ServerClient } from "../lib/actions/helpers";
 import { scheduleIndexing } from "../lib/actions/indexing";
+import { assertFreeEntryQuota } from "../lib/quotas";
+import { recordOwnedProductEvent } from "../services/product-events.service";
 import { removeAttachment } from "../lib/supabase/storage";
 import { toEntry, type EntryRow } from "../lib/actions/mappers";
 import { createEntrySchema, idSchema, listEntriesSchema, updateEntrySchema } from "../lib/actions/schemas";
@@ -47,6 +49,9 @@ export async function createLedgerEntry(input: CreateLedgerEntryInput): Promise<
     if (bad) return bad;
   }
 
+  const overQuota = await assertFreeEntryQuota(auth.supabase, auth.userId);
+  if (overQuota) return overQuota;
+
   const { data, error } = await auth.supabase
     .from("bitacora_ledger_entries")
     .insert({
@@ -67,6 +72,7 @@ export async function createLedgerEntry(input: CreateLedgerEntryInput): Promise<
   if (error) return fromPostgrest(error);
   const created = data as EntryRow;
   scheduleIndexing(auth.userId, created.id);
+  await recordOwnedProductEvent(auth.supabase, auth.userId, "first_note_created", { entry_type: created.entry_type });
   return ok(toEntry(created));
 }
 

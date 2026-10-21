@@ -1,0 +1,30 @@
+---
+description: Tres capas de confidencialidad, RAG aislado y control de acceso de bitacora-app
+alwaysApply: true
+---
+
+# Arquitectura de confidencialidad
+
+PWA (Progressive Web App) privada: cuaderno, tareas y proyectos, con Tutor de IA por recuperación aumentada (RAG). Toda tabla, consulta, storage y prompt respeta estas capas. Objetos de base de datos llevan prefijo `bitacora_` (Postgres compartido).
+
+## Capas
+
+1. **Personal.** Apuntes, tareas, proyectos y embeddings del dueño. Solo `user_id = auth.uid()`. El Tutor personal usa exclusivamente este corpus.
+2. **Grupo.** Laboratorios, tesis o estudio cerrado. Acceso solo por invitación y rol de membresía. El Tutor de equipo no lee la capa personal.
+3. **Comunidad.** Fragmentos que el usuario publica de forma explícita. Acceso por puntos de reputación frente al nivel del nodo. Nunca se infiere publicación por defecto.
+
+Hoy solo existe la capa 1 (`bitacora_ledger_entries`, embeddings, storage). Las capas 2 y 3 se añaden como tablas y políticas nuevas; no se reutiliza una fila privada cambiando un flag.
+
+## Acceso
+
+- Nota personal: permitir solo si `propietario_id == usuario`; si no, 403.
+- Espacio de grupo: permitir solo si el usuario es miembro; si no, 403.
+- Nodo de comunidad: permitir solo si `puntos_reputacion >= nivel_requerido`.
+- Cada tabla nueva: `enable row level security` y política que exprese la capa. Filtrar también por dueño o membresía en el código.
+- El cliente de rol de servicio omite la seguridad a nivel de fila. Úsalo solo en pipelines de confianza (embeddings) y acota siempre por `user_id`.
+- Storage: ruta `<user_id>/...`. El primer segmento es el que comprueba la política.
+- Búsqueda semántica: `security invoker` y filtro `auth.uid()` (o membresía / publicación, según la capa). Prohibido un índice global que mezcle corpus.
+
+## Ingesta
+
+Archivos locales, repositorios externos y apuntes escritos en la PWA entran ya etiquetados con su capa. Vectorizar no cambia la capa. Publicar en comunidad es una copia voluntaria, no un acceso al original privado.

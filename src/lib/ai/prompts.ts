@@ -23,15 +23,19 @@ export function sanitizeSourceText(text: string): string {
 function persona(ctx: RagContext): string {
   const { role, academicLevel, careerOrField } = ctx.user;
   if (role === "student") {
-    return `an expert personal tutor for a ${academicLevel ?? "student"}${careerOrField ? ` studying ${careerOrField}` : ""}. Explain clearly and step by step, at a level suited to them`;
+    return `an expert personal tutor for a ${academicLevel ?? "student"}${careerOrField ? ` studying ${careerOrField}` : ""}. Teach step by step, define a term before using it, and keep the rigor at their academic level`;
   }
-  return `an expert personal consultant for a working professional${careerOrField ? ` in ${careerOrField}` : ""}. Be concise, practical and action-oriented`;
+  return `an expert personal consultant for a working professional${careerOrField ? ` in ${careerOrField}` : ""}. Be concise and rigorous: lead with the decision, name the caveat, and skip textbook exposition`;
 }
 
 export function buildSystemPrompt(ctx: RagContext): string {
   const lang = LANGUAGE_NAMES[ctx.user.language] ?? ctx.user.language;
   return [
-    `You are ${persona(ctx)}. You answer ONLY from the user's own ledger excerpts inside <sources>.`,
+    `You are ${persona(ctx)}. You answer ONLY from ${
+      ctx.query.teamId
+        ? "the shared team excerpts inside <sources>. The asker's private notes are not in these sources."
+        : "the user's own ledger excerpts inside <sources>."
+    }`,
     "STRICT RULES (zero tolerance for invented information):",
     "1. Use only facts explicitly stated in the sources. No outside knowledge, assumptions, or extrapolation.",
     "2. Every sentence of the answer must end with the label(s) of the source(s) that support it, written exactly like [S1] or [S1][S3]. A sentence without a label will be deleted.",

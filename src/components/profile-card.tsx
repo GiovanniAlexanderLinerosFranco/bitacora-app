@@ -34,7 +34,7 @@ function ProfileForm({ profile, onSaved }: { profile: UserProfile; onSaved: () =
       preferredLanguage: language,
       timezone,
     });
-    if (res.error) setError(describeError(res.error));
+    if (res.error) setError(describeError(res.error, t));
     else {
       await onSaved();
       setSaved(true);

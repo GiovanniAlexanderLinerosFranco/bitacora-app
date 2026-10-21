@@ -2,14 +2,18 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { createCheckoutSession, createCustomerPortalSession, type BillingSnapshot } from "../../actions/stripe";
+import { createWompiCheckoutSession } from "../../actions/wompi";
+import { describeError } from "../../lib/action-error";
 import type { TranslationKey } from "../../lib/i18n";
 import { useTranslation } from "../../providers/i18n-provider";
 import { LanguageSwitcher } from "../layout/language-switcher";
-import { Button, Modal } from "../ui";
+import { Alert, Button, Modal } from "../ui";
+import { openWompiWidget } from "./wompi-widget";
 
 type PlanId = "free" | "pro" | "team";
 
-// Placeholder list prices in USD; adjust before enabling real billing.
+// Advertised list prices in USD. Checkout charges STRIPE_PRO_PRICE_ID, the price configured in Stripe.
 const PRO_PRICE = { monthly: 8, yearly: 80 } as const;
 
 const PLANS: { id: PlanId; features: TranslationKey[]; highlight?: boolean }[] = [
@@ -36,11 +40,16 @@ const AUDIENCE: Record<PlanId, TranslationKey> = {
 };
 const CTA: Record<PlanId, TranslationKey> = { free: "pricing.freeCta", pro: "pricing.proCta", team: "pricing.teamCta" };
 
-export function PricingView() {
+export function PricingView({ billing, notice }: { billing: BillingSnapshot; notice: "success" | "canceled" | "wompi" | null }) {
   const { t } = useTranslation();
   const [yearly, setYearly] = useState(false);
-  const [modal, setModal] = useState<Exclude<PlanId, "free"> | null>(null);
+  const [teamOpen, setTeamOpen] = useState(false);
+  const [pending, setPending] = useState<"checkout" | "portal" | "wompi" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const supportEmail = process.env.NEXT_PUBLIC_SUPPORT_EMAIL;
+  const proActive = billing.proAccess;
+  const proPastDue = billing.subscriptionStatus === "past_due" && billing.canManagePortal;
 
   const price = (id: PlanId) => {
     if (id === "team") return { amount: t("pricing.custom"), unit: null, note: t("pricing.customNote") };
@@ -49,8 +58,58 @@ export function PricingView() {
     return { amount: `$${value}`, unit, note: null };
   };
 
-  const mailto = (plan: "pro" | "team") =>
-    `mailto:${supportEmail}?subject=${encodeURIComponent(t(plan === "pro" ? "pricing.mailSubjectPro" : "pricing.mailSubjectTeam"))}`;
+  const mailto = `mailto:${supportEmail}?subject=${encodeURIComponent(t("pricing.mailSubjectTeam"))}`;
+
+  async function startBilling(kind: "checkout" | "portal") {
+    setPending(kind);
+    setError(null);
+    const result = kind === "checkout" ? await createCheckoutSession() : await createCustomerPortalSession();
+    if (result.error || !result.data) {
+      setError(describeError(result.error ?? { code: "billing_unavailable", message: t("pricing.billingUnavailable") }, t));
+      setPending(null);
+      return;
+    }
+    window.location.assign(result.data.url);
+  }
+
+  async function startWompi() {
+    setPending("wompi");
+    setError(null);
+    const result = await createWompiCheckoutSession();
+    if (result.error || !result.data) {
+      setError(describeError(result.error ?? { code: "billing_unavailable", message: t("pricing.billingUnavailable") }, t));
+      setPending(null);
+      return;
+    }
+    try {
+      await openWompiWidget(result.data);
+      setInfo(t("pricing.wompiPending"));
+    } catch {
+      setError(t("pricing.billingUnavailable"));
+    } finally {
+      setPending(null);
+    }
+  }
+
+  const payButtons = billing.signedIn ? (
+    <div className="flex flex-col gap-2">
+      <Button className="w-full py-2.5" disabled={pending !== null} onClick={() => void startWompi()}>
+        {pending === "wompi" ? t("common.loading") : t("pricing.wompiCta")}
+      </Button>
+      <Button variant="secondary" className="w-full py-2.5" disabled={pending !== null} onClick={() => void startBilling("checkout")}>
+        {pending === "checkout" ? t("common.loading") : t("pricing.stripeCta")}
+      </Button>
+    </div>
+  ) : (
+    <div className="flex flex-col gap-2">
+      <Link href="/login?next=/pricing" className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">
+        {t("pricing.wompiCta")}
+      </Link>
+      <Link href="/login?next=/pricing" className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50">
+        {t("pricing.stripeCta")}
+      </Link>
+    </div>
+  );
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
@@ -69,6 +128,12 @@ export function PricingView() {
       <header className="mx-auto max-w-2xl text-center">
         <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">{t("pricing.title")}</h1>
         <p className="mt-3 text-slate-600">{t("pricing.subtitle")}</p>
+        {notice === "success" && <div className="mt-4"><Alert tone="success">{t("pricing.checkoutSuccess")}</Alert></div>}
+        {notice === "canceled" && <div className="mt-4"><Alert tone="info">{t("pricing.checkoutCanceled")}</Alert></div>}
+        {(notice === "wompi" || info) && <div className="mt-4"><Alert tone="info">{info ?? t("pricing.wompiPending")}</Alert></div>}
+        {error && <div className="mt-4"><Alert>{error}</Alert></div>}
+        {proActive && <p className="mt-4 text-sm font-medium text-emerald-700">{t("pricing.proActive")}</p>}
+        {proPastDue && <p className="mt-4 text-sm font-medium text-amber-700">{t("pricing.pastDue")}</p>}
         <div role="group" aria-label={t("pricing.nav")} className="mt-6 inline-flex rounded-full border border-slate-300 bg-white p-1 text-sm">
           {([false, true] as const).map((isYearly) => (
             <button
@@ -123,10 +188,20 @@ export function PricingView() {
                 >
                   {t(CTA[id])}
                 </Link>
-              ) : (
-                <Button variant={highlight ? "primary" : "secondary"} className="w-full py-2.5" onClick={() => setModal(id)}>
+              ) : id === "team" ? (
+                <Button variant="secondary" className="w-full py-2.5" onClick={() => setTeamOpen(true)}>
                   {t(CTA[id])}
                 </Button>
+              ) : proActive && billing.canManagePortal ? (
+                <Button className="w-full py-2.5" disabled={pending !== null} onClick={() => void startBilling("portal")}>
+                  {pending === "portal" ? t("common.loading") : t("pricing.manageCta")}
+                </Button>
+              ) : proActive ? null : proPastDue && billing.canManagePortal ? (
+                <Button className="w-full py-2.5" disabled={pending !== null} onClick={() => void startBilling("portal")}>
+                  {pending === "portal" ? t("common.loading") : t("pricing.manageCta")}
+                </Button>
+              ) : (
+                payButtons
               )}
             </section>
           );
@@ -135,13 +210,13 @@ export function PricingView() {
 
       <p className="mt-8 text-center text-xs text-slate-500">{t("pricing.footnote")}</p>
 
-      {modal && (
-        <Modal title={t(modal === "pro" ? "pricing.modalProTitle" : "pricing.modalTeamTitle")} onClose={() => setModal(null)}>
-          <p className="text-sm text-slate-700">{t(modal === "pro" ? "pricing.modalProBody" : "pricing.modalTeamBody")}</p>
+      {teamOpen && (
+        <Modal title={t("pricing.modalTeamTitle")} onClose={() => setTeamOpen(false)}>
+          <p className="text-sm text-slate-700">{t("pricing.modalTeamBody")}</p>
           {supportEmail && (
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <a
-                href={mailto(modal)}
+                href={mailto}
                 className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
               >
                 {t("pricing.requestByEmail")}

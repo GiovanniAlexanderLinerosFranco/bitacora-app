@@ -12,6 +12,7 @@ export interface UserProfile {
   careerOrField: string | null;
   preferredLanguage: Locale | (string & {});
   timezone: string;
+  onboardingCompletedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

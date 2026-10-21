@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { archiveSubject, createSubject, deleteSubject, updateSubject } from "../actions/subjects";
-import { describeError } from "../lib/action-error";
+import { listMyTeams, listSharedSubjects, shareSubjectWithTeam, type SharedSubjectLink, type TeamSummary } from "../actions/teams";
+import { describeError, describeTeamError } from "../lib/action-error";
 import { useSubjects } from "../hooks/use-subjects";
 import { useTranslation } from "../providers/i18n-provider";
 import type { SubjectOrProject, WorkspaceKind } from "../types";
@@ -33,7 +35,7 @@ function SubjectFormModal({
     const input = { kind, name, description, color };
     const res = subject ? await updateSubject(subject.id, input) : await createSubject({ ...input, description });
     if (res.error) {
-      setError(describeError(res.error));
+      setError(describeError(res.error, t));
       setPending(false);
       return;
     }
@@ -86,22 +88,111 @@ function SubjectFormModal({
   );
 }
 
+function ShareSubjectModal({
+  subject,
+  teams,
+  onClose,
+  onShared,
+}: {
+  subject: SubjectOrProject;
+  teams: TeamSummary[];
+  onClose: () => void;
+  onShared: () => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [teamId, setTeamId] = useState(teams[0]?.id ?? "");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    if (!teamId && teams[0]) setTeamId(teams[0].id);
+  }, [teamId, teams]);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!teamId) return;
+    setPending(true);
+    setError(null);
+    const res = await shareSubjectWithTeam({ teamId, subjectId: subject.id });
+    setPending(false);
+    if (res.error) {
+      setError(describeTeamError(res.error, t));
+      return;
+    }
+    setDone(true);
+    await onShared();
+  }
+
+  return (
+    <Modal title={t("subjects.shareTitle", { name: subject.name })} onClose={onClose}>
+      <form onSubmit={onSubmit} className="space-y-4">
+        <p className="text-sm text-slate-600">{t("subjects.shareHint")}</p>
+        {error && <Alert>{error}</Alert>}
+        {done && <Alert tone="success">{t("subjects.shared")}</Alert>}
+        {teams.length === 0 ? (
+          <p className="text-sm text-slate-600">
+            {t("subjects.noManageTeam")}{" "}
+            <Link href="/teams" className="font-medium text-indigo-700 hover:underline">
+              {t("nav.teams")}
+            </Link>
+          </p>
+        ) : (
+          <Field label={t("subjects.shareTeam")}>
+            <select required value={teamId} onChange={(e) => setTeamId(e.target.value)} className={inputClass}>
+              {teams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            {t("common.close")}
+          </Button>
+          {teams.length > 0 && !done && (
+            <Button type="submit" disabled={pending || !teamId}>
+              {pending ? t("common.loading") : t("subjects.shareAction")}
+            </Button>
+          )}
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export function SubjectsManager() {
   const { t } = useTranslation();
   const { subjects, loading, error, reload } = useSubjects();
   const [kindFilter, setKindFilter] = useState<WorkspaceKind | "">("");
   const [showArchived, setShowArchived] = useState(false);
   const [editing, setEditing] = useState<SubjectOrProject | "new" | null>(null);
+  const [sharing, setSharing] = useState<SubjectOrProject | null>(null);
+  const [teams, setTeams] = useState<TeamSummary[]>([]);
+  const [shares, setShares] = useState<SharedSubjectLink[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const visible = useMemo(
     () => subjects.filter((s) => (showArchived || !s.isArchived) && (!kindFilter || s.kind === kindFilter)),
     [subjects, kindFilter, showArchived],
   );
+  const manageable = teams.filter((team) => team.role === "owner" || team.role === "admin");
+
+  const reloadShares = useCallback(async () => {
+    const [teamRes, shareRes] = await Promise.all([listMyTeams(), listSharedSubjects()]);
+    setTeams(teamRes.data ?? []);
+    setShares(shareRes.data ?? []);
+  }, []);
+
+  useEffect(() => {
+    void reloadShares();
+  }, [reloadShares]);
 
   async function run(op: Promise<{ error: { code: string; message: string; fields?: Record<string, string> } | null }>) {
     const res = await op;
-    if (res.error) setActionError(describeError(res.error));
+    if (res.error) setActionError(describeError(res.error, t));
     else setActionError(null);
     await reload();
   }
@@ -142,12 +233,28 @@ export function SubjectsManager() {
                 <SubjectBadge subject={s} />
                 <Badge>{t(`subjects.kinds.${s.kind}`)}</Badge>
                 {s.isArchived && <Badge tone="warn">{t("subjects.archivedTag")}</Badge>}
+                {shares
+                  .filter((share) => share.subjectId === s.id)
+                  .map((share) => {
+                    const team = teams.find((item) => item.id === share.teamId);
+                    if (!team) return null;
+                    return (
+                      <Badge key={share.id} tone="good">
+                        {t("subjects.sharedWith", { team: team.name })}
+                      </Badge>
+                    );
+                  })}
               </div>
               {s.description && <p className="mt-2 line-clamp-2 text-sm text-slate-600">{s.description}</p>}
               <div className="mt-3 flex flex-wrap gap-1">
                 <Button variant="ghost" onClick={() => setEditing(s)}>
                   {t("common.edit")}
                 </Button>
+                {!s.isArchived && (
+                  <Button variant="ghost" onClick={() => setSharing(s)}>
+                    {t("subjects.share")}
+                  </Button>
+                )}
                 <Button variant="ghost" onClick={() => run(archiveSubject(s.id, !s.isArchived))}>
                   {s.isArchived ? t("common.restore") : t("common.archive")}
                 </Button>
@@ -166,6 +273,16 @@ export function SubjectsManager() {
 
       {editing && (
         <SubjectFormModal subject={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={reload} />
+      )}
+      {sharing && (
+        <ShareSubjectModal
+          subject={sharing}
+          teams={manageable}
+          onClose={() => setSharing(null)}
+          onShared={async () => {
+            await reloadShares();
+          }}
+        />
       )}
     </Card>
   );

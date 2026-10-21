@@ -16,6 +16,8 @@ export interface RetrievedChunk {
 export interface RagQuery {
   question: string;
   subjectId?: string | null;
+  /** When set, retrieval uses the team copy and does not search the personal corpus. */
+  teamId?: string | null;
   matchCount?: number;
   matchThreshold?: number;
 }

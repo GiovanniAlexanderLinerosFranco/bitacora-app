@@ -8,7 +8,18 @@ export function buildAttachmentPath(userId: string, entryId: string, fileName: s
   return `${userId}/${entryId}/${crypto.randomUUID()}-${sanitizeFileName(fileName)}`;
 }
 
-export const isOwnedPath = (userId: string, path: string) => path.split("/")[0] === userId;
+/**
+ * Personal-layer storage path: `<user_id>/<...>` with no empty, `.` or `..` segments.
+ * The first segment is the owner. A later copy of the id, a prefix of it, or a traversal does not pass.
+ */
+export function isOwnedPath(userId: string, path: string): boolean {
+  if (!userId || /[\\/]/.test(userId)) return false;
+  if (path.includes("\\")) return false;
+  const segments = path.split("/");
+  if (segments.length < 2) return false;
+  if (segments.some((segment) => segment.length === 0 || segment === "." || segment === "..")) return false;
+  return segments[0] === userId;
+}
 
 /** Upload with the user's client so storage RLS enforces ownership. */
 export async function uploadAttachment(

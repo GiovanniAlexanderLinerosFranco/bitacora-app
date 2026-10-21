@@ -42,3 +42,18 @@ export async function updateProfile(input: UpdateProfileInput): Promise<ActionRe
   if (error) return fromPostgrest(error);
   return ok(toProfile(data as ProfileRow));
 }
+
+/** Marks the first-run guide finished for this owner. Does not clear it. */
+export async function completeOnboarding(): Promise<ActionResponse<UserProfile>> {
+  const auth = await requireUser();
+  if (auth.error) return { data: null, error: auth.error };
+
+  const { data, error } = await auth.supabase
+    .from("bitacora_profiles")
+    .update({ onboarding_completed_at: new Date().toISOString() })
+    .eq("id", auth.userId)
+    .select("*")
+    .single();
+  if (error) return fromPostgrest(error);
+  return ok(toProfile(data as ProfileRow));
+}

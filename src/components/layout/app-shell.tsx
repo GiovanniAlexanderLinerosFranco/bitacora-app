@@ -12,6 +12,7 @@ import { LanguageSwitcher } from "./language-switcher";
 const LINKS: { href: string; label: TranslationKey }[] = [
   { href: "/dashboard", label: "nav.dashboard" },
   { href: "/ledger", label: "nav.ledger" },
+  { href: "/teams", label: "nav.teams" },
   { href: "/chat", label: "nav.chat" },
   { href: "/pricing", label: "pricing.nav" },
 ];
@@ -27,7 +28,15 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (!isLoading && !isAuthenticated) router.replace("/login");
   }, [isLoading, isAuthenticated, router]);
 
-  if (isLoading || !isAuthenticated) {
+  const needsOnboarding = !!profile && !profile.onboardingCompletedAt;
+
+  useEffect(() => {
+    if (isLoading || !profile) return;
+    if (!profile.onboardingCompletedAt && pathname !== "/onboarding") router.replace("/onboarding");
+    if (profile.onboardingCompletedAt && pathname === "/onboarding") router.replace("/dashboard");
+  }, [isLoading, profile, pathname, router]);
+
+  if (isLoading || !isAuthenticated || (needsOnboarding && pathname !== "/onboarding")) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-slate-500">{t("common.loading")}</div>;
   }
 
@@ -37,7 +46,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4">
           <span className="hidden text-sm font-semibold text-indigo-700 sm:block">{t("app.name")}</span>
           <nav className="flex flex-1 gap-1" aria-label="Main">
-            {LINKS.map(({ href, label }) => {
+            {needsOnboarding
+              ? null
+              : LINKS.map(({ href, label }) => {
               const active = pathname === href || pathname.startsWith(`${href}/`);
               return (
                 <Link

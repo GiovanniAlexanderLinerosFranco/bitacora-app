@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { retryStuckIndexing } from "../../actions/indexing";
 import { deleteLedgerEntry, getLedgerEntry, listLedgerEntries, reindexLedgerEntry, type ListEntriesParams } from "../../actions/ledger";
 import { describeError } from "../../lib/action-error";
 import { useSubjects } from "../../hooks/use-subjects";
@@ -55,17 +56,44 @@ export function LedgerWorkspace() {
       const res = await listLedgerEntries(params);
       if (id !== requestId.current) return; // a newer request superseded this one
       setLoading(false);
-      if (res.error) return setError(describeError(res.error));
+      if (res.error) return setError(describeError(res.error, t));
       setError(null);
       setHasMore(res.data.length === PAGE_SIZE);
       setEntries((prev) => (offset === 0 ? res.data : [...prev, ...res.data]));
     },
-    [filters],
+    [filters, t],
   );
 
   useEffect(() => {
     void load(0);
   }, [load]);
+
+  // Re-embeds this owner's pending and failed notes, and processing rows abandoned mid-run.
+  // The action filters service-role queries by the signed-in user. Overlapping sweeps are skipped.
+  const retrying = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    const sweep = async () => {
+      if (retrying.current) return;
+      retrying.current = true;
+      try {
+        const res = await retryStuckIndexing();
+        if (cancelled || res.error || res.data.entryIds.length === 0) return;
+        const results = await Promise.all(res.data.entryIds.map((id) => getLedgerEntry(id)));
+        if (cancelled) return;
+        const fresh = new Map(results.flatMap((r) => (r.data ? [[r.data.id, r.data] as const] : [])));
+        setEntries((prev) => prev.map((e) => fresh.get(e.id) ?? e));
+      } finally {
+        retrying.current = false;
+      }
+    };
+    void sweep();
+    const timer = setInterval(() => void sweep(), 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
 
   // Debounce the free-text tag filter.
   useEffect(() => {
@@ -94,13 +122,13 @@ export function LedgerWorkspace() {
   async function onDelete(entry: LedgerEntry) {
     if (!window.confirm(t("ledger.confirmDelete"))) return;
     const res = await deleteLedgerEntry(entry.id);
-    if (res.error) setError(describeError(res.error));
+    if (res.error) setError(describeError(res.error, t));
     else setEntries((prev) => prev.filter((e) => e.id !== entry.id));
   }
 
   async function onReindex(entry: LedgerEntry) {
     const res = await reindexLedgerEntry(entry.id);
-    if (res.error) setError(describeError(res.error));
+    if (res.error) setError(describeError(res.error, t));
     else setEntries((prev) => prev.map((e) => (e.id === entry.id ? res.data : e)));
   }
 

@@ -118,7 +118,7 @@ export function EntryFormModal({
         ...(rawText !== entry.rawText ? { rawText } : {}),
       });
       if (res.error) {
-        setError(describeError(res.error));
+        setError(describeError(res.error, t));
         setPending(false);
         return;
       }
@@ -134,7 +134,7 @@ export function EntryFormModal({
         ...(isTask ? { taskStatus, dueDate: dueDate || null } : {}),
       });
       if (res.error) {
-        setError(describeError(res.error));
+        setError(describeError(res.error, t));
         setPending(false);
         return;
       }
@@ -146,10 +146,10 @@ export function EntryFormModal({
       const fd = new FormData();
       fd.append("file", file);
       const up = await uploadEntryAttachment(saved.id, fd);
-      if (up.error) warning = t("ledger.uploadWarning", { reason: describeError(up.error) });
+      if (up.error) warning = t("ledger.uploadWarning", { reason: describeError(up.error, t) });
     } else if (removeFile && entry?.sourceFilePath) {
       const rm = await removeEntryAttachment(saved.id);
-      if (rm.error) warning = describeError(rm.error);
+      if (rm.error) warning = describeError(rm.error, t);
     }
 
     onSaved();

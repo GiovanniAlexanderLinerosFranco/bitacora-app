@@ -39,7 +39,7 @@ export function EntryCard({
     setOpening(true);
     const res = await getEntryAttachmentUrl(entry.id);
     setOpening(false);
-    if (res.error) onError(describeError(res.error));
+    if (res.error) onError(describeError(res.error, t));
     else window.open(res.data.url, "_blank", "noopener,noreferrer");
   }
 

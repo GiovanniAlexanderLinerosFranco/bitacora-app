@@ -61,7 +61,7 @@ export function RegisterForm() {
       email: cleanEmail,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=/onboarding`,
         // Read by the signup trigger to create the profile row.
         data: { display_name: displayName.trim(), role, preferred_language: locale, accepted_terms_at: new Date().toISOString() },
       },
@@ -72,7 +72,7 @@ export function RegisterForm() {
       return setError(key ? t(key) : err.message);
     }
     if (data.session) {
-      router.replace("/dashboard");
+      router.replace("/onboarding");
       router.refresh();
     } else {
       router.replace(`/verify?email=${encodeURIComponent(cleanEmail)}`);

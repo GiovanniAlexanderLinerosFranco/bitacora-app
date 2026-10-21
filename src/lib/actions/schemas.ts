@@ -85,3 +85,12 @@ export const listEntriesSchema = z
   .strict();
 
 export const idSchema = uuid;
+
+/** Tutor question. The subject filter, when present, must be one of the caller's own subject ids. */
+export const askAssistantSchema = z
+  .object({
+    question: z.string().trim().min(1, "Required").max(2000),
+    subjectId: z.string().uuid().nullable().optional(),
+    teamId: z.string().uuid().nullable().optional(),
+  })
+  .strict();

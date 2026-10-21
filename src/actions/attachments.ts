@@ -2,6 +2,7 @@
 
 import { fail, fromPostgrest, ok, requireUser } from "../lib/actions/helpers";
 import { scheduleIndexing } from "../lib/actions/indexing";
+import { assertFreeAttachmentQuota } from "../lib/quotas";
 import { toEntry, type EntryRow } from "../lib/actions/mappers";
 import { idSchema } from "../lib/actions/schemas";
 import { MAX_ATTACHMENT_BYTES, classifyMime, normalizeMime } from "../lib/attachments";
@@ -39,6 +40,10 @@ export async function uploadEntryAttachment(entryId: string, formData: FormData)
     .maybeSingle();
   if (readErr) return fromPostgrest(readErr);
   if (!existing) return fail("not_found", "Entry not found.");
+  if (!existing.source_file_path) {
+    const overQuota = await assertFreeAttachmentQuota(auth.supabase, auth.userId);
+    if (overQuota) return overQuota;
+  }
 
   const path = buildAttachmentPath(auth.userId, entryId, file.name);
   const upload = await uploadAttachment(auth.supabase, path, file, mime);
